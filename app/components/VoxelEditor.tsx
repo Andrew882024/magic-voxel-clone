@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useReducer } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, useCursor } from "@react-three/drei";
 import * as THREE from "three";
 
 const GRID_SIZE = 32;
 const DRAG_THRESHOLD_PX = 6;
+const MAX_HISTORY = 50;
 const PALETTE = [
   "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
   "#3b82f6", "#8b5cf6", "#ec4899", "#f43f5e", "#ffffff",
@@ -23,6 +24,39 @@ function parseVoxelKey(key: string): [number, number, number] {
 }
 
 type VoxelMap = Record<string, string>;
+
+type HistoryState = {
+  voxels: VoxelMap;
+  history: VoxelMap[];
+  historyIndex: number;
+};
+
+function historyReducer(state: HistoryState, action: { type: "APPLY"; next: VoxelMap } | { type: "UNDO" } | { type: "REDO" } | { type: "CLEAR" }): HistoryState {
+  switch (action.type) {
+    case "APPLY": {
+      const truncated = [...state.history.slice(0, state.historyIndex + 1), action.next].slice(-MAX_HISTORY);
+      return {
+        voxels: action.next,
+        history: truncated,
+        historyIndex: truncated.length - 1,
+      };
+    }
+    case "UNDO": {
+      if (state.historyIndex <= 0) return state;
+      const i = state.historyIndex - 1;
+      return { ...state, voxels: state.history[i], historyIndex: i };
+    }
+    case "REDO": {
+      if (state.historyIndex >= state.history.length - 1) return state;
+      const i = state.historyIndex + 1;
+      return { ...state, voxels: state.history[i], historyIndex: i };
+    }
+    case "CLEAR":
+      return historyReducer(state, { type: "APPLY", next: {} });
+    default:
+      return state;
+  }
+}
 
 function Floor({
   onPlace,
@@ -164,30 +198,28 @@ function VoxelBlock({
 
 function Scene({
   voxels,
-  setVoxels,
+  dispatch,
   selectedColor,
 }: {
   voxels: VoxelMap;
-  setVoxels: React.Dispatch<React.SetStateAction<VoxelMap>>;
+  dispatch: React.Dispatch<Parameters<typeof historyReducer>[1]>;
   selectedColor: string;
 }) {
   const place = useCallback(
     (x: number, y: number, z: number) => {
       const key = voxelKey(x, y, z);
-      setVoxels((prev) => ({ ...prev, [key]: selectedColor }));
+      dispatch({ type: "APPLY", next: { ...voxels, [key]: selectedColor } });
     },
-    [selectedColor, setVoxels]
+    [selectedColor, voxels, dispatch]
   );
 
   const remove = useCallback(
     (key: string) => {
-      setVoxels((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+      const next = { ...voxels };
+      delete next[key];
+      dispatch({ type: "APPLY", next });
     },
-    [setVoxels]
+    [voxels, dispatch]
   );
 
   return (
@@ -234,9 +266,18 @@ function Scene({
 
 
 
+const initialHistoryState: HistoryState = {
+  voxels: {},
+  history: [{}],
+  historyIndex: 0,
+};
+
 export default function VoxelEditor() {
-  const [voxels, setVoxels] = useState<VoxelMap>({});
+  const [historyState, dispatch] = useReducer(historyReducer, initialHistoryState);
+  const { voxels, history, historyIndex } = historyState;
   const [selectedColor, setSelectedColor] = useState(PALETTE[0]);
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
 
   return (
     <div className="flex h-screen w-full flex-col bg-zinc-950">
@@ -250,11 +291,29 @@ export default function VoxelEditor() {
         </p>
       </header>
 
-
-      
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
         <aside className="flex w-52 shrink-0 flex-col gap-4 border-r border-zinc-800 bg-zinc-900/80 p-4">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => dispatch({ type: "UNDO" })}
+              disabled={!canUndo}
+              className="flex-1 rounded-lg bg-zinc-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Undo"
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: "REDO" })}
+              disabled={!canRedo}
+              className="flex-1 rounded-lg bg-zinc-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Redo"
+            >
+              Redo
+            </button>
+          </div>
           <div>
             <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
               Color
@@ -290,7 +349,7 @@ export default function VoxelEditor() {
           <div className="mt-auto border-t border-zinc-800 pt-4">
             <button
               type="button"
-              onClick={() => setVoxels({})}
+              onClick={() => dispatch({ type: "CLEAR" })}
               className="w-full rounded-lg bg-zinc-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-600"
             >
               Clear all
@@ -299,10 +358,7 @@ export default function VoxelEditor() {
         </aside>
 
         {/* Canvas */}
-        <main
-            className="flex-1"
-            onContextMenu={(e) => e.preventDefault()}
-          >
+        <main className="flex-1" onContextMenu={(e) => e.preventDefault()}>
           <Canvas
             shadows
             camera={{ position: [12, 10, 12], fov: 50 }}
@@ -310,7 +366,7 @@ export default function VoxelEditor() {
           >
             <Scene
               voxels={voxels}
-              setVoxels={setVoxels}
+              dispatch={dispatch}
               selectedColor={selectedColor}
             />
           </Canvas>
