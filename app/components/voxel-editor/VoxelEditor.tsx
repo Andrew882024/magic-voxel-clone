@@ -1,7 +1,19 @@
 /**
  * VoxelEditor
  *
- * Root component of the voxel editor.
+ * Root container of the voxel editor application.
+ *
+ * High-level architecture:
+ *
+ *   VoxelEditor (UI + state)
+ *        |
+ *        +-- Scene.tsx (3D rendering & interaction)
+ *        |
+ *        +-- Sidebar panels
+ *              |-- Color selection
+ *              |-- Painting mode
+ *              |-- Shape placement
+ *              |-- Light controls
  *
  * Responsibilities:
  * - maintain the current voxel snapshot and editor UI state
