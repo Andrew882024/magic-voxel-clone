@@ -557,11 +557,8 @@ export default function VoxelEditor() {
               dispatch={dispatch}
               selectedColor={selectedColor}
               cubePlacementArmed={cubePlacementArmed}
-              onCubePlacementConsumed={() => setCubePlacementArmed(false)}
               floorPlacementArmed={floorPlacementArmed}
-              onFloorPlacementConsumed={() => setFloorPlacementArmed(false)}
               treePlacementArmed={treePlacementArmed}
-              onTreePlacementConsumed={() => setTreePlacementArmed(false)}
               lightSourceVisible={lightSourceVisible}
               lightPosition={lightPosition}
               lightStrength={lightStrength}

@@ -21,11 +21,8 @@ type SceneProps = {
   dispatch: Dispatch<HistoryAction>;
   selectedColor: string;
   cubePlacementArmed: boolean;
-  onCubePlacementConsumed: () => void;
   floorPlacementArmed: boolean;
-  onFloorPlacementConsumed: () => void;
   treePlacementArmed: boolean;
-  onTreePlacementConsumed: () => void;
   lightSourceVisible: boolean;
   lightPosition: [number, number, number];
   lightStrength: number;
@@ -37,11 +34,8 @@ export function Scene({
   dispatch,
   selectedColor,
   cubePlacementArmed,
-  onCubePlacementConsumed,
   floorPlacementArmed,
-  onFloorPlacementConsumed,
   treePlacementArmed,
-  onTreePlacementConsumed,
   lightSourceVisible,
   lightPosition,
   lightStrength,
@@ -54,7 +48,6 @@ export function Scene({
           type: "APPLY",
           next: stampCube(voxels, [x, y, z], selectedColor),
         });
-        onCubePlacementConsumed();
         return;
       }
 
@@ -63,7 +56,6 @@ export function Scene({
           type: "APPLY",
           next: stampFloor(voxels, [x, y, z], selectedColor),
         });
-        onFloorPlacementConsumed();
         return;
       }
 
@@ -72,7 +64,6 @@ export function Scene({
           type: "APPLY",
           next: stampTree(voxels, [x, y, z]),
         });
-        onTreePlacementConsumed();
         return;
       }
 
@@ -82,9 +73,6 @@ export function Scene({
     [
       cubePlacementArmed,
       dispatch,
-      onCubePlacementConsumed,
-      onFloorPlacementConsumed,
-      onTreePlacementConsumed,
       floorPlacementArmed,
       selectedColor,
       treePlacementArmed,
