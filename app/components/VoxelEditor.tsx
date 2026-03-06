@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useReducer } from "react";
+import { useRef, useState, useCallback, useReducer, useMemo, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, useCursor } from "@react-three/drei";
 import * as THREE from "three";
@@ -18,6 +18,51 @@ const PALETTE = [
 function voxelKey(x: number, y: number, z: number) {
   return `${x},${y},${z}`;
 }
+
+/** Returns whether a voxel exists at (x,y,z). */
+function hasVoxel(voxels: VoxelMap, x: number, y: number, z: number): boolean {
+  return voxelKey(x, y, z) in voxels;
+}
+
+/** For each of the 8 corners of a voxel, count how many of the 8 cells sharing that corner are filled (1–8). */
+function getCornerOcclusion(
+  vx: number,
+  vy: number,
+  vz: number,
+  voxels: VoxelMap
+): number[] {
+  const out: number[] = [];
+  for (let cz = 0; cz <= 1; cz++) {
+    for (let cy = 0; cy <= 1; cy++) {
+      for (let cx = 0; cx <= 1; cx++) {
+        let count = 0;
+        for (let dz = 0; dz <= 1; dz++) {
+          for (let dy = 0; dy <= 1; dy++) {
+            for (let dx = 0; dx <= 1; dx++) {
+              if (hasVoxel(voxels, vx - 1 + cx + dx, vy - 1 + cy + dy, vz - 1 + cz + dz)) count++;
+            }
+          }
+        }
+        out.push(count);
+      }
+    }
+  }
+  return out;
+}
+
+const AO_STRENGTH = 0.55;
+const BOX_CORNER_BY_VERTEX = (() => {
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  const pos = box.attributes.position;
+  const arr: number[] = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const cx = Math.round(x), cy = Math.round(y), cz = Math.round(z);
+    arr.push(cx + 2 * cy + 4 * cz);
+  }
+  box.dispose();
+  return arr;
+})();
 
 function parseVoxelKey(key: string): [number, number, number] {
   const [x, y, z] = key.split(",").map(Number);
@@ -79,6 +124,7 @@ function Floor({
       ref={ref}
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, 0, 0]}
+      receiveShadow
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
@@ -122,14 +168,18 @@ function Floor({
   );
 }
 
+const sharedBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+
 function VoxelBlock({
   position,
   color,
+  voxels,
   onRemove,
   onPlaceAdjacent,
 }: {
   position: [number, number, number];
   color: string;
+  voxels: VoxelMap;
   onRemove: () => void;
   onPlaceAdjacent: (x: number, y: number, z: number) => void;
 }) {
@@ -141,10 +191,31 @@ function VoxelBlock({
   useCursor(hovered, "pointer");
 
   const [x, y, z] = position;
+  const geometry = useMemo(() => {
+    const occlusion = getCornerOcclusion(x, y, z, voxels);
+    const geom = sharedBoxGeometry.clone();
+    const base = new THREE.Color(color);
+    const colors = new Float32Array(BOX_CORNER_BY_VERTEX.length * 3);
+    for (let i = 0; i < BOX_CORNER_BY_VERTEX.length; i++) {
+      const c = BOX_CORNER_BY_VERTEX[i];
+      const t = 1 - AO_STRENGTH * (occlusion[c] / 8);
+      const shaded = base.clone().multiplyScalar(t);
+      colors[i * 3] = shaded.r;
+      colors[i * 3 + 1] = shaded.g;
+      colors[i * 3 + 2] = shaded.b;
+    }
+    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return geom;
+  }, [color, x, y, z, voxels]);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
   return (
     <mesh
       ref={ref}
       position={[x + 0.5, y + 0.5, z + 0.5]}
+      castShadow
+      receiveShadow
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
@@ -187,24 +258,34 @@ function VoxelBlock({
       }}
       onContextMenu={(e) => e.nativeEvent.preventDefault()}
     >
-      <boxGeometry args={[1, 1, 1]} />
+      <primitive object={geometry} attach="geometry" />
       <meshStandardMaterial
-        color={color}
+        color="#ffffff"
+        vertexColors
         emissive={hovered ? color : "#000000"}
-        emissiveIntensity={hovered ? 0.3 : 0}
+        emissiveIntensity={hovered ? 0.25 : 0}
       />
     </mesh>
   );
 }
 
+const DEFAULT_LIGHT_POSITION: [number, number, number] = [6, 22, 6];
+const DEFAULT_LIGHT_STRENGTH = 1.1;
+
 function Scene({
   voxels,
   dispatch,
   selectedColor,
+  lightSourceVisible,
+  lightPosition,
+  lightStrength,
 }: {
   voxels: VoxelMap;
   dispatch: React.Dispatch<Parameters<typeof historyReducer>[1]>;
   selectedColor: string;
+  lightSourceVisible: boolean;
+  lightPosition: [number, number, number];
+  lightStrength: number;
 }) {
   const place = useCallback(
     (x: number, y: number, z: number) => {
@@ -223,11 +304,44 @@ function Scene({
     [voxels, dispatch]
   );
 
+  const mainLightRef = useRef<THREE.DirectionalLight>(null);
+  useEffect(() => {
+    const light = mainLightRef.current;
+    if (!light?.shadow) return;
+    light.shadow.mapSize.set(2048, 2048);
+    light.shadow.camera.near = 0.5;
+    light.shadow.camera.far = 100;
+    light.shadow.camera.left = -25;
+    light.shadow.camera.right = 25;
+    light.shadow.camera.top = 25;
+    light.shadow.camera.bottom = -25;
+    light.shadow.bias = -0.0001;
+  }, []);
+
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 20, 10]} intensity={1} castShadow />
-      <directionalLight position={[-10, 10, -10]} intensity={0.4} />
+      <ambientLight intensity={0.35} />
+      <hemisphereLight
+        args={["#87ceeb", "#3d2b1f", 0.6]}
+        position={[0, 20, 0]}
+      />
+      {lightSourceVisible && (
+        <mesh position={lightPosition} castShadow={false} receiveShadow={false}>
+          <sphereGeometry args={[2.5, 32, 32]} />
+          <meshBasicMaterial
+            color="#ffdd99"
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+      <directionalLight
+        ref={mainLightRef}
+        position={lightPosition}
+        intensity={lightSourceVisible ? lightStrength : 0}
+        castShadow={lightSourceVisible}
+      />
+      <directionalLight position={[-10, 10, -10]} intensity={0.35} />
+      <pointLight position={[0, 15, 5]} intensity={0.2} distance={40} />
       <OrbitControls
         enableRotate
         enablePan
@@ -255,6 +369,7 @@ function Scene({
           key={key}
           position={parseVoxelKey(key)}
           color={color}
+          voxels={voxels}
           onRemove={() => remove(key)}
           onPlaceAdjacent={place}
         />
@@ -277,6 +392,9 @@ export default function VoxelEditor() {
   const [historyState, dispatch] = useReducer(historyReducer, initialHistoryState);
   const { voxels, history, historyIndex } = historyState;
   const [selectedColor, setSelectedColor] = useState(PALETTE[0]);
+  const [lightSourceVisible, setLightSourceVisible] = useState(true);
+  const [lightPosition, setLightPosition] = useState<[number, number, number]>(DEFAULT_LIGHT_POSITION);
+  const [lightStrength, setLightStrength] = useState(DEFAULT_LIGHT_STRENGTH);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
@@ -385,6 +503,97 @@ export default function VoxelEditor() {
               className="h-10 w-full cursor-pointer rounded-lg border border-zinc-700 bg-transparent"
             />
           </div>
+          <div>
+            <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Light source
+            </label>
+            <button
+              type="button"
+              onClick={() => setLightSourceVisible((v) => !v)}
+              className="w-full rounded-lg bg-zinc-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-600"
+            >
+              {lightSourceVisible ? "Hide" : "Show"}
+            </button>
+            <div className="mt-2 space-y-2">
+              <div>
+                <label className="mb-1 block text-xs text-zinc-400">
+                  Strength
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={3}
+                    step={0.1}
+                    value={lightStrength}
+                    onChange={(e) =>
+                      setLightStrength(Number(e.target.value))
+                    }
+                    className="flex-1 accent-amber-500"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={5}
+                    step={0.1}
+                    value={lightStrength}
+                    onChange={(e) =>
+                      setLightStrength(Math.max(0, Math.min(5, Number(e.target.value) || 0)))
+                    }
+                    className="w-14 rounded border border-zinc-700 bg-zinc-800 px-1.5 py-1 text-right text-sm text-white"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 text-xs text-zinc-400">X</span>
+                <input
+                  type="number"
+                  value={lightPosition[0]}
+                  onChange={(e) =>
+                    setLightPosition((p) => [
+                      Number(e.target.value),
+                      p[1],
+                      p[2],
+                    ])
+                  }
+                  className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
+                  step={1}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 text-xs text-zinc-400">Y</span>
+                <input
+                  type="number"
+                  value={lightPosition[1]}
+                  onChange={(e) =>
+                    setLightPosition((p) => [
+                      p[0],
+                      Number(e.target.value),
+                      p[2],
+                    ])
+                  }
+                  className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
+                  step={1}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 text-xs text-zinc-400">Z</span>
+                <input
+                  type="number"
+                  value={lightPosition[2]}
+                  onChange={(e) =>
+                    setLightPosition((p) => [
+                      p[0],
+                      p[1],
+                      Number(e.target.value),
+                    ])
+                  }
+                  className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
+                  step={1}
+                />
+              </div>
+            </div>
+          </div>
           <div className="mt-auto border-t border-zinc-800 pt-4 space-y-2">
             <div>
               <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
@@ -437,6 +646,9 @@ export default function VoxelEditor() {
               voxels={voxels}
               dispatch={dispatch}
               selectedColor={selectedColor}
+              lightSourceVisible={lightSourceVisible}
+              lightPosition={lightPosition}
+              lightStrength={lightStrength}
             />
           </Canvas>
         </main>
