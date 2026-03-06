@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useReducer, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useReducer, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Canvas } from "@react-three/fiber";
 import { parseVox, serializeVox } from "@/app/lib/voxFormat";
+import { CUBE_STAMP_SIZE } from "./stamps/cubeStamp";
+import { FLOOR_STAMP_SIZE } from "./stamps/floorStamp";
 import { Scene } from "./Scene";
 import {
   DEFAULT_LIGHT_POSITION,
@@ -43,6 +45,9 @@ const CONTROL_SECTIONS = [
     title: "Editor",
     items: [
       ["Painting mode", "Drag across voxels to recolor them"],
+      [`${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE} cube`, "Click once, then click the scene to place it"],
+      [`${FLOOR_STAMP_SIZE}x${FLOOR_STAMP_SIZE} floor`, "Click once, then click the scene to place it"],
+      ["Tree stamp", "Click once, then click the scene to place a green tree with a brown trunk"],
       ["Undo / Redo", "Step backward or forward through edits"],
       ["Save / Load", "Export or import MagicaVoxel .vox files"],
       ["Clear all", "Remove every voxel from the scene"],
@@ -55,6 +60,8 @@ type HistoryState = {
   history: VoxelMap[];
   historyIndex: number;
 };
+
+type PanelKey = "painting" | "shape" | "color" | "light";
 
 function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
   switch (action.type) {
@@ -89,6 +96,35 @@ const initialHistoryState: HistoryState = {
   historyIndex: 0,
 };
 
+function SidebarPanel({
+  title,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+      >
+        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+          {title}
+        </span>
+        <span className="text-sm font-semibold text-zinc-300">{isOpen ? "-" : "+"}</span>
+      </button>
+      {isOpen && <div className="border-t border-zinc-800 p-3">{children}</div>}
+    </div>
+  );
+}
+
 export default function VoxelEditor() {
   const [historyState, dispatch] = useReducer(historyReducer, initialHistoryState);
   const { voxels, history, historyIndex } = historyState;
@@ -97,9 +133,22 @@ export default function VoxelEditor() {
   const [lightPosition, setLightPosition] = useState<[number, number, number]>(DEFAULT_LIGHT_POSITION);
   const [lightStrength, setLightStrength] = useState(DEFAULT_LIGHT_STRENGTH);
   const [paintingMode, setPaintingMode] = useState(false);
+  const [cubePlacementArmed, setCubePlacementArmed] = useState(false);
+  const [floorPlacementArmed, setFloorPlacementArmed] = useState(false);
+  const [treePlacementArmed, setTreePlacementArmed] = useState(false);
+  const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>({
+    painting: false,
+    shape: false,
+    color: true,
+    light: false,
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
+
+  const togglePanel = useCallback((panel: PanelKey) => {
+    setOpenPanels((current) => ({ ...current, [panel]: !current[panel] }));
+  }, []);
 
   const handleSave = useCallback(() => {
     try {
@@ -182,7 +231,7 @@ export default function VoxelEditor() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
-        <aside className="flex w-55 shrink-0 flex-col gap-4 border-r border-zinc-800 bg-zinc-900/80 p-4">
+        <aside className="flex w-55 shrink-0 flex-col gap-4 overflow-y-auto border-r border-zinc-800 bg-zinc-900/80 p-4">
           <div className="flex gap-2">
             <button
               type="button"
@@ -203,27 +252,11 @@ export default function VoxelEditor() {
               Redo
             </button>
           </div>
-          <div>
-            <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Painting
-            </label>
-            <button
-              type="button"
-              onClick={() => setPaintingMode((v) => !v)}
-              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                paintingMode
-                  ? "bg-amber-600 text-white hover:bg-amber-500"
-                  : "bg-zinc-700 text-white hover:bg-zinc-600"
-              }`}
-              title={paintingMode ? "Painting on – orbit disabled, drag on voxels to paint" : "Painting off"}
-            >
-              {paintingMode ? "Painting on" : "Painting off"}
-            </button>
-          </div>
-          <div>
-            <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Color
-            </label>
+          <SidebarPanel
+            title="Color"
+            isOpen={openPanels.color}
+            onToggle={() => togglePanel("color")}
+          >
             <div className="grid grid-cols-4 gap-2">
               {PALETTE.map((color) => (
                 <button
@@ -240,22 +273,148 @@ export default function VoxelEditor() {
                 />
               ))}
             </div>
-          </div>
-          <div>
-            <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Custom
-            </label>
-            <input
-              type="color"
-              value={selectedColor}
-              onChange={(e) => setSelectedColor(e.target.value)}
-              className="h-10 w-full cursor-pointer bg-transparent"
-            />
-          </div>
-          <div>
-            <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Light source
-            </label>
+            <div className="mt-3">
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Custom
+              </label>
+              <input
+                type="color"
+                value={selectedColor}
+                onChange={(e) => setSelectedColor(e.target.value)}
+                className="h-10 w-full cursor-pointer bg-transparent"
+              />
+            </div>
+          </SidebarPanel>
+          <SidebarPanel
+            title="Painting"
+            isOpen={openPanels.painting}
+            onToggle={() => togglePanel("painting")}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setPaintingMode((v) => {
+                  const next = !v;
+                  if (next) {
+                    setCubePlacementArmed(false);
+                    setFloorPlacementArmed(false);
+                    setTreePlacementArmed(false);
+                  }
+                  return next;
+                })
+              }
+              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                paintingMode
+                  ? "bg-amber-600 text-white hover:bg-amber-500"
+                  : "bg-zinc-700 text-white hover:bg-zinc-600"
+              }`}
+              title={paintingMode ? "Painting on - orbit disabled, drag on voxels to paint" : "Painting off"}
+            >
+              {paintingMode ? "Painting on" : "Painting off"}
+            </button>
+          </SidebarPanel>
+          <SidebarPanel
+            title="Shape"
+            isOpen={openPanels.shape}
+            onToggle={() => togglePanel("shape")}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setCubePlacementArmed((v) => {
+                  const next = !v;
+                  if (next) {
+                    setPaintingMode(false);
+                    setFloorPlacementArmed(false);
+                    setTreePlacementArmed(false);
+                  }
+                  return next;
+                })
+              }
+              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                cubePlacementArmed
+                  ? "bg-sky-600 text-white hover:bg-sky-500"
+                  : "bg-zinc-700 text-white hover:bg-zinc-600"
+              }`}
+              title={
+                cubePlacementArmed
+                  ? `Next click will place a ${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE} cube`
+                  : `Arm a one-click ${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE} cube placement`
+              }
+            >
+              {cubePlacementArmed
+                ? `${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE} cube armed`
+                : `Place ${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE}x${CUBE_STAMP_SIZE} cube`}
+            </button>
+            <p className="mt-2 text-xs leading-5 text-zinc-400">
+              Click this once, then click anywhere in the scene to drop the cube at that position.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setFloorPlacementArmed((v) => {
+                  const next = !v;
+                  if (next) {
+                    setPaintingMode(false);
+                    setCubePlacementArmed(false);
+                    setTreePlacementArmed(false);
+                  }
+                  return next;
+                })
+              }
+              className={`mt-3 w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                floorPlacementArmed
+                  ? "bg-cyan-600 text-white hover:bg-cyan-500"
+                  : "bg-zinc-700 text-white hover:bg-zinc-600"
+              }`}
+              title={
+                floorPlacementArmed
+                  ? `Next click will place a ${FLOOR_STAMP_SIZE}x${FLOOR_STAMP_SIZE} floor`
+                  : `Arm a one-click ${FLOOR_STAMP_SIZE}x${FLOOR_STAMP_SIZE} floor placement`
+              }
+            >
+              {floorPlacementArmed
+                ? `${FLOOR_STAMP_SIZE}x${FLOOR_STAMP_SIZE} floor armed`
+                : `Place ${FLOOR_STAMP_SIZE}x${FLOOR_STAMP_SIZE} floor`}
+            </button>
+            <p className="mt-2 text-xs leading-5 text-zinc-400">
+              Places a flat floor using your currently selected color.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setTreePlacementArmed((v) => {
+                  const next = !v;
+                  if (next) {
+                    setPaintingMode(false);
+                    setCubePlacementArmed(false);
+                    setFloorPlacementArmed(false);
+                  }
+                  return next;
+                })
+              }
+              className={`mt-3 w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                treePlacementArmed
+                  ? "bg-emerald-600 text-white hover:bg-emerald-500"
+                  : "bg-zinc-700 text-white hover:bg-zinc-600"
+              }`}
+              title={
+                treePlacementArmed
+                  ? "Next click will place a tree"
+                  : "Arm a one-click tree placement"
+              }
+            >
+              {treePlacementArmed ? "Tree stamp armed" : "Place tree"}
+            </button>
+            <p className="mt-2 text-xs leading-5 text-zinc-400">
+              Places a stylized tree with a bark-brown trunk and green leaves.
+            </p>
+          </SidebarPanel>
+          <SidebarPanel
+            title="Light source"
+            isOpen={openPanels.light}
+            onToggle={() => togglePanel("light")}
+          >
             <button
               type="button"
               onClick={() => setLightSourceVisible((v) => !v)}
@@ -344,7 +503,7 @@ export default function VoxelEditor() {
                 </div>
               </div>
             )}
-          </div>
+          </SidebarPanel>
           <div className="mt-auto border-t border-zinc-800 pt-4 space-y-2">
             <div>
               <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
@@ -397,6 +556,12 @@ export default function VoxelEditor() {
               voxels={voxels}
               dispatch={dispatch}
               selectedColor={selectedColor}
+              cubePlacementArmed={cubePlacementArmed}
+              onCubePlacementConsumed={() => setCubePlacementArmed(false)}
+              floorPlacementArmed={floorPlacementArmed}
+              onFloorPlacementConsumed={() => setFloorPlacementArmed(false)}
+              treePlacementArmed={treePlacementArmed}
+              onTreePlacementConsumed={() => setTreePlacementArmed(false)}
               lightSourceVisible={lightSourceVisible}
               lightPosition={lightPosition}
               lightStrength={lightStrength}

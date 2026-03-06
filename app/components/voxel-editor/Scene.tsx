@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch } from "react";
 import { Grid, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import { stampCube } from "./stamps/cubeStamp";
 import { Floor } from "./Floor";
+import { stampFloor } from "./stamps/floorStamp";
+import { stampTree } from "./stamps/treeStamp";
 import { VoxelBlock } from "./VoxelBlock";
 import {
   GRID_SIZE,
@@ -17,6 +20,12 @@ type SceneProps = {
   voxels: VoxelMap;
   dispatch: Dispatch<HistoryAction>;
   selectedColor: string;
+  cubePlacementArmed: boolean;
+  onCubePlacementConsumed: () => void;
+  floorPlacementArmed: boolean;
+  onFloorPlacementConsumed: () => void;
+  treePlacementArmed: boolean;
+  onTreePlacementConsumed: () => void;
   lightSourceVisible: boolean;
   lightPosition: [number, number, number];
   lightStrength: number;
@@ -27,6 +36,12 @@ export function Scene({
   voxels,
   dispatch,
   selectedColor,
+  cubePlacementArmed,
+  onCubePlacementConsumed,
+  floorPlacementArmed,
+  onFloorPlacementConsumed,
+  treePlacementArmed,
+  onTreePlacementConsumed,
   lightSourceVisible,
   lightPosition,
   lightStrength,
@@ -34,10 +49,47 @@ export function Scene({
 }: SceneProps) {
   const place = useCallback(
     (x: number, y: number, z: number) => {
+      if (cubePlacementArmed) {
+        dispatch({
+          type: "APPLY",
+          next: stampCube(voxels, [x, y, z], selectedColor),
+        });
+        onCubePlacementConsumed();
+        return;
+      }
+
+      if (floorPlacementArmed) {
+        dispatch({
+          type: "APPLY",
+          next: stampFloor(voxels, [x, y, z], selectedColor),
+        });
+        onFloorPlacementConsumed();
+        return;
+      }
+
+      if (treePlacementArmed) {
+        dispatch({
+          type: "APPLY",
+          next: stampTree(voxels, [x, y, z]),
+        });
+        onTreePlacementConsumed();
+        return;
+      }
+
       const key = voxelKey(x, y, z);
       dispatch({ type: "APPLY", next: { ...voxels, [key]: selectedColor } });
     },
-    [dispatch, selectedColor, voxels]
+    [
+      cubePlacementArmed,
+      dispatch,
+      onCubePlacementConsumed,
+      onFloorPlacementConsumed,
+      onTreePlacementConsumed,
+      floorPlacementArmed,
+      selectedColor,
+      treePlacementArmed,
+      voxels,
+    ]
   );
 
   const remove = useCallback(
