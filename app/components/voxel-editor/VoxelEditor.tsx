@@ -15,7 +15,7 @@ import {
 const PALETTE = [
   "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
   "#3b82f6", "#8b5cf6", "#ec4899", "#f43f5e", "#ffffff",
-  "#a1a1aa", "#404040", "#18181b",
+  "#a1a1aa", "#404040",
 ];
 
 type HistoryState = {
@@ -120,7 +120,7 @@ export default function VoxelEditor() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
-        <aside className="flex w-52 shrink-0 flex-col gap-4 border-r border-zinc-800 bg-zinc-900/80 p-4">
+        <aside className="flex w-55 shrink-0 flex-col gap-4 border-r border-zinc-800 bg-zinc-900/80 p-4">
           <div className="flex gap-2">
             <button
               type="button"
@@ -187,7 +187,7 @@ export default function VoxelEditor() {
               type="color"
               value={selectedColor}
               onChange={(e) => setSelectedColor(e.target.value)}
-              className="h-10 w-full cursor-pointer rounded-lg border border-zinc-700 bg-transparent"
+              className="h-10 w-full cursor-pointer bg-transparent"
             />
           </div>
           <div>
@@ -201,85 +201,87 @@ export default function VoxelEditor() {
             >
               {lightSourceVisible ? "Hide" : "Show"}
             </button>
-            <div className="mt-2 space-y-2">
-              <div>
-                <label className="mb-1 block text-xs text-zinc-400">
-                  Strength
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={0}
-                    max={3}
-                    step={0.1}
-                    value={lightStrength}
-                    onChange={(e) =>
-                      setLightStrength(Number(e.target.value))
-                    }
-                    className="flex-1 accent-amber-500"
-                  />
+            {lightSourceVisible && (
+              <div className="mt-2 max-w-[98%] space-y-2">
+                <div>
+                  <label className="mb-1 block text-xs text-zinc-400">
+                    Strength
+                  </label>
+                  <div className="flex max-w-full items-center gap-2">
+                    <input
+                      type="range"
+                      min={0}
+                      max={3}
+                      step={0.1}
+                      value={lightStrength}
+                      onChange={(e) =>
+                        setLightStrength(Number(e.target.value))
+                      }
+                      className="min-w-0 flex-1 accent-amber-500"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={5}
+                      step={0.1}
+                      value={lightStrength}
+                      onChange={(e) =>
+                        setLightStrength(Math.max(0, Math.min(5, Number(e.target.value) || 0)))
+                      }
+                      className="w-14 rounded border border-zinc-700 bg-zinc-800 px-1.5 py-1 text-right text-sm text-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="w-5 text-xs text-zinc-400">X</span>
                   <input
                     type="number"
-                    min={0}
-                    max={5}
-                    step={0.1}
-                    value={lightStrength}
+                    value={lightPosition[0]}
                     onChange={(e) =>
-                      setLightStrength(Math.max(0, Math.min(5, Number(e.target.value) || 0)))
+                      setLightPosition((p) => [
+                        Number(e.target.value),
+                        p[1],
+                        p[2],
+                      ])
                     }
-                    className="w-14 rounded border border-zinc-700 bg-zinc-800 px-1.5 py-1 text-right text-sm text-white"
+                    className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
+                    step={1}
+                  />
+                </div>
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="w-5 text-xs text-zinc-400">Y</span>
+                  <input
+                    type="number"
+                    value={lightPosition[1]}
+                    onChange={(e) =>
+                      setLightPosition((p) => [
+                        p[0],
+                        Number(e.target.value),
+                        p[2],
+                      ])
+                    }
+                    className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
+                    step={1}
+                  />
+                </div>
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="w-5 text-xs text-zinc-400">Z</span>
+                  <input
+                    type="number"
+                    value={lightPosition[2]}
+                    onChange={(e) =>
+                      setLightPosition((p) => [
+                        p[0],
+                        p[1],
+                        Number(e.target.value),
+                      ])
+                    }
+                    className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
+                    step={1}
                   />
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 text-xs text-zinc-400">X</span>
-                <input
-                  type="number"
-                  value={lightPosition[0]}
-                  onChange={(e) =>
-                    setLightPosition((p) => [
-                      Number(e.target.value),
-                      p[1],
-                      p[2],
-                    ])
-                  }
-                  className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
-                  step={1}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 text-xs text-zinc-400">Y</span>
-                <input
-                  type="number"
-                  value={lightPosition[1]}
-                  onChange={(e) =>
-                    setLightPosition((p) => [
-                      p[0],
-                      Number(e.target.value),
-                      p[2],
-                    ])
-                  }
-                  className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
-                  step={1}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 text-xs text-zinc-400">Z</span>
-                <input
-                  type="number"
-                  value={lightPosition[2]}
-                  onChange={(e) =>
-                    setLightPosition((p) => [
-                      p[0],
-                      p[1],
-                      Number(e.target.value),
-                    ])
-                  }
-                  className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white"
-                  step={1}
-                />
-              </div>
-            </div>
+            )}
           </div>
           <div className="mt-auto border-t border-zinc-800 pt-4 space-y-2">
             <div>
