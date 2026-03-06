@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useReducer, useMemo, useEffect } from "react";
+import { useRef, useState, useCallback, useReducer, useMemo, useEffect, useLayoutEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, useCursor } from "@react-three/drei";
 import * as THREE from "three";
@@ -163,6 +163,7 @@ function Floor({
         transparent
         opacity={0.4}
         side={THREE.DoubleSide}
+        depthWrite={false}
       />
     </mesh>
   );
@@ -305,6 +306,8 @@ function Scene({
   );
 
   const mainLightRef = useRef<THREE.DirectionalLight>(null);
+  const gridRef = useRef<THREE.Mesh>(null);
+
   useEffect(() => {
     const light = mainLightRef.current;
     if (!light?.shadow) return;
@@ -316,6 +319,12 @@ function Scene({
     light.shadow.camera.top = 25;
     light.shadow.camera.bottom = -25;
     light.shadow.bias = -0.0001;
+  }, []);
+
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid?.material) return;
+    (grid.material as THREE.Material).depthWrite = false;
   }, []);
 
   return (
@@ -350,6 +359,7 @@ function Scene({
         maxDistance={80}
       />
       <Grid
+        ref={gridRef}
         args={[GRID_SIZE * 2, GRID_SIZE * 2]}
         cellSize={1}
         cellThickness={0.5}
