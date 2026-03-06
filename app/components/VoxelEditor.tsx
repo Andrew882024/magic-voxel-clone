@@ -177,12 +177,20 @@ function VoxelBlock({
   voxels,
   onRemove,
   onPlaceAdjacent,
+  paintingMode,
+  onPaint,
+  getIsPointerDown,
+  setPaintPointerDown,
 }: {
   position: [number, number, number];
   color: string;
   voxels: VoxelMap;
   onRemove: () => void;
   onPlaceAdjacent: (x: number, y: number, z: number) => void;
+  paintingMode?: boolean;
+  onPaint?: (key: string) => void;
+  getIsPointerDown?: () => boolean;
+  setPaintPointerDown?: (down: boolean) => void;
 }) {
   const ref = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
@@ -220,6 +228,11 @@ function VoxelBlock({
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
+        if (paintingMode && onPaint) {
+          setPaintPointerDown?.(true);
+          onPaint(voxelKey(x, y, z));
+          return;
+        }
         let adjacent: [number, number, number] | null = null;
         const n = e.face?.normal;
         if (n) {
@@ -237,6 +250,7 @@ function VoxelBlock({
       }}
       onPointerUp={(e) => {
         if (e.button !== 0) return;
+        if (paintingMode) return;
         const p = pending.current;
         pending.current = null;
         if (!p) return;
@@ -252,6 +266,9 @@ function VoxelBlock({
       onPointerOver={(e) => {
         e.stopPropagation();
         setHovered(true);
+        if (paintingMode && getIsPointerDown?.() && onPaint) {
+          onPaint(voxelKey(x, y, z));
+        }
       }}
       onPointerOut={() => {
         setHovered(false);
@@ -280,6 +297,7 @@ function Scene({
   lightSourceVisible,
   lightPosition,
   lightStrength,
+  paintingMode,
 }: {
   voxels: VoxelMap;
   dispatch: React.Dispatch<Parameters<typeof historyReducer>[1]>;
@@ -287,6 +305,7 @@ function Scene({
   lightSourceVisible: boolean;
   lightPosition: [number, number, number];
   lightStrength: number;
+  paintingMode: boolean;
 }) {
   const place = useCallback(
     (x: number, y: number, z: number) => {
@@ -304,6 +323,27 @@ function Scene({
     },
     [voxels, dispatch]
   );
+
+  const paintPointerDownRef = useRef(false);
+  const paintVoxel = useCallback(
+    (key: string) => {
+      dispatch({ type: "APPLY", next: { ...voxels, [key]: selectedColor } });
+    },
+    [voxels, selectedColor, dispatch]
+  );
+  const getIsPointerDown = useCallback(() => paintPointerDownRef.current, []);
+  const setPaintPointerDown = useCallback((down: boolean) => {
+    paintPointerDownRef.current = down;
+  }, []);
+
+  useEffect(() => {
+    if (!paintingMode) return;
+    const onUp = () => {
+      paintPointerDownRef.current = false;
+    };
+    window.addEventListener("pointerup", onUp);
+    return () => window.removeEventListener("pointerup", onUp);
+  }, [paintingMode]);
 
   const mainLightRef = useRef<THREE.DirectionalLight>(null);
   const gridRef = useRef<THREE.Mesh>(null);
@@ -352,8 +392,8 @@ function Scene({
       <directionalLight position={[-10, 10, -10]} intensity={0.35} />
       <pointLight position={[0, 15, 5]} intensity={0.2} distance={40} />
       <OrbitControls
-        enableRotate
-        enablePan
+        enableRotate={!paintingMode}
+        enablePan={!paintingMode}
         enableZoom
         minDistance={4}
         maxDistance={80}
@@ -382,6 +422,10 @@ function Scene({
           voxels={voxels}
           onRemove={() => remove(key)}
           onPlaceAdjacent={place}
+          paintingMode={paintingMode}
+          onPaint={paintVoxel}
+          getIsPointerDown={getIsPointerDown}
+          setPaintPointerDown={setPaintPointerDown}
         />
       ))}
     </>
@@ -405,6 +449,7 @@ export default function VoxelEditor() {
   const [lightSourceVisible, setLightSourceVisible] = useState(true);
   const [lightPosition, setLightPosition] = useState<[number, number, number]>(DEFAULT_LIGHT_POSITION);
   const [lightStrength, setLightStrength] = useState(DEFAULT_LIGHT_STRENGTH);
+  const [paintingMode, setPaintingMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
@@ -479,6 +524,23 @@ export default function VoxelEditor() {
               title="Redo"
             >
               Redo
+            </button>
+          </div>
+          <div>
+            <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Painting
+            </label>
+            <button
+              type="button"
+              onClick={() => setPaintingMode((v) => !v)}
+              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                paintingMode
+                  ? "bg-amber-600 text-white hover:bg-amber-500"
+                  : "bg-zinc-700 text-white hover:bg-zinc-600"
+              }`}
+              title={paintingMode ? "Painting on – orbit disabled, drag on voxels to paint" : "Painting off"}
+            >
+              {paintingMode ? "Painting on" : "Painting off"}
             </button>
           </div>
           <div>
@@ -659,6 +721,7 @@ export default function VoxelEditor() {
               lightSourceVisible={lightSourceVisible}
               lightPosition={lightPosition}
               lightStrength={lightStrength}
+              paintingMode={paintingMode}
             />
           </Canvas>
         </main>
