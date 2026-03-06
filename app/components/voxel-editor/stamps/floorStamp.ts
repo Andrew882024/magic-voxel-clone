@@ -1,4 +1,4 @@
-import { type VoxelMap, voxelKey } from "../shared";
+import { type VoxelMap, voxelKey } from "../scene/shared";
 
 export const FLOOR_STAMP_SIZE = 9;
 

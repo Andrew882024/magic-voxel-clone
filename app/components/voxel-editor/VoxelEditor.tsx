@@ -3,16 +3,16 @@
 import { useCallback, useReducer, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Canvas } from "@react-three/fiber";
 import { parseVox, serializeVox } from "@/app/lib/voxFormat";
+import { Scene } from "@/app/components/voxel-editor/scene/Scene";
 import { CUBE_STAMP_SIZE } from "./stamps/cubeStamp";
 import { FLOOR_STAMP_SIZE } from "./stamps/floorStamp";
-import { Scene } from "./Scene";
 import {
   DEFAULT_LIGHT_POSITION,
   DEFAULT_LIGHT_STRENGTH,
   MAX_HISTORY,
   type HistoryAction,
   type VoxelMap,
-} from "./shared";
+} from "@/app/components/voxel-editor/scene/shared";
 
 const PALETTE = [
   "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",

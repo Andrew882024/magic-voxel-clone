@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch } from "react";
 import { Grid, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { stampCube } from "./stamps/cubeStamp";
 import { Floor } from "./Floor";
-import { stampFloor } from "./stamps/floorStamp";
-import { stampTree } from "./stamps/treeStamp";
 import { VoxelBlock } from "./VoxelBlock";
+import { stampCube } from "../stamps/cubeStamp";
+import { stampFloor } from "../stamps/floorStamp";
+import { stampTree } from "../stamps/treeStamp";
 import {
   GRID_SIZE,
   parseVoxelKey,

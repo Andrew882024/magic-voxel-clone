@@ -1,4 +1,4 @@
-import { type VoxelMap, voxelKey } from "../shared";
+import { type VoxelMap, voxelKey } from "../scene/shared";
 
 export const TREE_TRUNK_COLOR = "#8b5a2b";
 export const TREE_LEAF_COLOR = "#22c55e";
