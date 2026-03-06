@@ -1,75 +1,22 @@
 "use client";
 
-import { useRef, useState, useCallback, useReducer, useMemo, useEffect, useLayoutEffect } from "react";
+import { useCallback, useReducer, useRef, useState, type ChangeEvent } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Grid, useCursor } from "@react-three/drei";
-import * as THREE from "three";
-import { serializeVox, parseVox } from "@/app/lib/voxFormat";
+import { parseVox, serializeVox } from "@/app/lib/voxFormat";
+import { Scene } from "./Scene";
+import {
+  DEFAULT_LIGHT_POSITION,
+  DEFAULT_LIGHT_STRENGTH,
+  MAX_HISTORY,
+  type HistoryAction,
+  type VoxelMap,
+} from "./shared";
 
-const GRID_SIZE = 32;
-const DRAG_THRESHOLD_PX = 6;
-const MAX_HISTORY = 50;
 const PALETTE = [
   "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
   "#3b82f6", "#8b5cf6", "#ec4899", "#f43f5e", "#ffffff",
   "#a1a1aa", "#404040", "#18181b",
 ];
-
-function voxelKey(x: number, y: number, z: number) {
-  return `${x},${y},${z}`;
-}
-
-/** Returns whether a voxel exists at (x,y,z). */
-function hasVoxel(voxels: VoxelMap, x: number, y: number, z: number): boolean {
-  return voxelKey(x, y, z) in voxels;
-}
-
-/** For each of the 8 corners of a voxel, count how many of the 8 cells sharing that corner are filled (1–8). */
-function getCornerOcclusion(
-  vx: number,
-  vy: number,
-  vz: number,
-  voxels: VoxelMap
-): number[] {
-  const out: number[] = [];
-  for (let cz = 0; cz <= 1; cz++) {
-    for (let cy = 0; cy <= 1; cy++) {
-      for (let cx = 0; cx <= 1; cx++) {
-        let count = 0;
-        for (let dz = 0; dz <= 1; dz++) {
-          for (let dy = 0; dy <= 1; dy++) {
-            for (let dx = 0; dx <= 1; dx++) {
-              if (hasVoxel(voxels, vx - 1 + cx + dx, vy - 1 + cy + dy, vz - 1 + cz + dz)) count++;
-            }
-          }
-        }
-        out.push(count);
-      }
-    }
-  }
-  return out;
-}
-
-const AO_STRENGTH = 0.55;
-const BOX_CORNER_BY_VERTEX = (() => {
-  const box = new THREE.BoxGeometry(1, 1, 1);
-  const pos = box.attributes.position;
-  const arr: number[] = [];
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const cx = Math.round(x), cy = Math.round(y), cz = Math.round(z);
-    arr.push(cx + 2 * cy + 4 * cz);
-  }
-  box.dispose();
-  return arr;
-})();
-
-function parseVoxelKey(key: string): [number, number, number] {
-  const [x, y, z] = key.split(",").map(Number);
-  return [x, y, z];
-}
-
-type VoxelMap = Record<string, string>;
 
 type HistoryState = {
   voxels: VoxelMap;
@@ -77,7 +24,7 @@ type HistoryState = {
   historyIndex: number;
 };
 
-function historyReducer(state: HistoryState, action: { type: "APPLY"; next: VoxelMap } | { type: "UNDO" } | { type: "REDO" } | { type: "CLEAR" }): HistoryState {
+function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
   switch (action.type) {
     case "APPLY": {
       const truncated = [...state.history.slice(0, state.historyIndex + 1), action.next].slice(-MAX_HISTORY);
@@ -103,338 +50,6 @@ function historyReducer(state: HistoryState, action: { type: "APPLY"; next: Voxe
       return state;
   }
 }
-
-function Floor({
-  onPlace,
-}: {
-  onPlace: (x: number, y: number, z: number) => void;
-}) {
-  const ref = useRef<THREE.Mesh>(null);
-  const [hovered, setHovered] = useState(false);
-  const pending = useRef<{
-    position: [number, number, number];
-    clientX: number;
-    clientY: number;
-    shiftKey: boolean;
-  } | null>(null);
-  useCursor(hovered, "crosshair");
-
-  return (
-    <mesh
-      ref={ref}
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, 0, 0]}
-      receiveShadow
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        e.stopPropagation();
-        const p = e.point;
-        const x = Math.floor(p.x);
-        const z = Math.floor(p.z);
-        const y = 0;
-        pending.current = {
-          position: [x, y, z],
-          clientX: e.clientX,
-          clientY: e.clientY,
-          shiftKey: e.shiftKey,
-        };
-      }}
-      onPointerUp={(e) => {
-        if (e.button !== 0) return;
-        const p = pending.current;
-        pending.current = null;
-        if (!p) return;
-        if (p.shiftKey) return;
-        const dx = e.clientX - p.clientX;
-        const dy = e.clientY - p.clientY;
-        if (dx * dx + dy * dy <= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
-          onPlace(...p.position);
-        }
-      }}
-      onPointerOver={() => setHovered(true)}
-      onPointerOut={() => {
-        setHovered(false);
-        pending.current = null;
-      }}
-    >
-      <planeGeometry args={[GRID_SIZE * 2, GRID_SIZE * 2]} />
-      <meshStandardMaterial
-        color="#1a1a1a"
-        transparent
-        opacity={0.4}
-        side={THREE.DoubleSide}
-        depthWrite={false}
-      />
-    </mesh>
-  );
-}
-
-const sharedBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
-
-function VoxelBlock({
-  position,
-  color,
-  voxels,
-  onRemove,
-  onPlaceAdjacent,
-  paintingMode,
-  onPaint,
-  getIsPointerDown,
-  setPaintPointerDown,
-}: {
-  position: [number, number, number];
-  color: string;
-  voxels: VoxelMap;
-  onRemove: () => void;
-  onPlaceAdjacent: (x: number, y: number, z: number) => void;
-  paintingMode?: boolean;
-  onPaint?: (key: string) => void;
-  getIsPointerDown?: () => boolean;
-  setPaintPointerDown?: (down: boolean) => void;
-}) {
-  const ref = useRef<THREE.Mesh>(null);
-  const [hovered, setHovered] = useState(false);
-  const pending = useRef<
-    { shiftKey: boolean; adjacent: [number, number, number] | null; clientX: number; clientY: number } | null
-  >(null);
-  useCursor(hovered, "pointer");
-
-  const [x, y, z] = position;
-  const geometry = useMemo(() => {
-    const occlusion = getCornerOcclusion(x, y, z, voxels);
-    const geom = sharedBoxGeometry.clone();
-    const base = new THREE.Color(color);
-    const colors = new Float32Array(BOX_CORNER_BY_VERTEX.length * 3);
-    for (let i = 0; i < BOX_CORNER_BY_VERTEX.length; i++) {
-      const c = BOX_CORNER_BY_VERTEX[i];
-      const t = 1 - AO_STRENGTH * (occlusion[c] / 8);
-      const shaded = base.clone().multiplyScalar(t);
-      colors[i * 3] = shaded.r;
-      colors[i * 3 + 1] = shaded.g;
-      colors[i * 3 + 2] = shaded.b;
-    }
-    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    return geom;
-  }, [color, x, y, z, voxels]);
-
-  useEffect(() => () => geometry.dispose(), [geometry]);
-
-  return (
-    <mesh
-      ref={ref}
-      position={[x + 0.5, y + 0.5, z + 0.5]}
-      castShadow
-      receiveShadow
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        e.stopPropagation();
-        if (paintingMode && onPaint) {
-          setPaintPointerDown?.(true);
-          onPaint(voxelKey(x, y, z));
-          return;
-        }
-        let adjacent: [number, number, number] | null = null;
-        const n = e.face?.normal;
-        if (n) {
-          const nx = Math.round(n.x);
-          const ny = Math.round(n.y);
-          const nz = Math.round(n.z);
-          adjacent = [x + nx, y + ny, z + nz];
-        }
-        pending.current = {
-          shiftKey: e.shiftKey,
-          adjacent,
-          clientX: e.clientX,
-          clientY: e.clientY,
-        };
-      }}
-      onPointerUp={(e) => {
-        if (e.button !== 0) return;
-        if (paintingMode) return;
-        const p = pending.current;
-        pending.current = null;
-        if (!p) return;
-        const dx = e.clientX - p.clientX;
-        const dy = e.clientY - p.clientY;
-        if (dx * dx + dy * dy > DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
-        if (p.shiftKey) {
-          onRemove();
-        } else if (p.adjacent) {
-          onPlaceAdjacent(...p.adjacent);
-        }
-      }}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setHovered(true);
-        if (paintingMode && getIsPointerDown?.() && onPaint) {
-          onPaint(voxelKey(x, y, z));
-        }
-      }}
-      onPointerOut={() => {
-        setHovered(false);
-        pending.current = null;
-      }}
-      onContextMenu={(e) => e.nativeEvent.preventDefault()}
-    >
-      <primitive object={geometry} attach="geometry" />
-      <meshStandardMaterial
-        color="#ffffff"
-        vertexColors
-        emissive={hovered ? color : "#000000"}
-        emissiveIntensity={hovered ? 0.25 : 0}
-      />
-    </mesh>
-  );
-}
-
-const DEFAULT_LIGHT_POSITION: [number, number, number] = [6, 22, 6];
-const DEFAULT_LIGHT_STRENGTH = 1.1;
-
-function Scene({
-  voxels,
-  dispatch,
-  selectedColor,
-  lightSourceVisible,
-  lightPosition,
-  lightStrength,
-  paintingMode,
-}: {
-  voxels: VoxelMap;
-  dispatch: React.Dispatch<Parameters<typeof historyReducer>[1]>;
-  selectedColor: string;
-  lightSourceVisible: boolean;
-  lightPosition: [number, number, number];
-  lightStrength: number;
-  paintingMode: boolean;
-}) {
-  const place = useCallback(
-    (x: number, y: number, z: number) => {
-      const key = voxelKey(x, y, z);
-      dispatch({ type: "APPLY", next: { ...voxels, [key]: selectedColor } });
-    },
-    [selectedColor, voxels, dispatch]
-  );
-
-  const remove = useCallback(
-    (key: string) => {
-      const next = { ...voxels };
-      delete next[key];
-      dispatch({ type: "APPLY", next });
-    },
-    [voxels, dispatch]
-  );
-
-  const paintPointerDownRef = useRef(false);
-  const paintVoxel = useCallback(
-    (key: string) => {
-      dispatch({ type: "APPLY", next: { ...voxels, [key]: selectedColor } });
-    },
-    [voxels, selectedColor, dispatch]
-  );
-  const getIsPointerDown = useCallback(() => paintPointerDownRef.current, []);
-  const setPaintPointerDown = useCallback((down: boolean) => {
-    paintPointerDownRef.current = down;
-  }, []);
-
-  useEffect(() => {
-    if (!paintingMode) return;
-    const onUp = () => {
-      paintPointerDownRef.current = false;
-    };
-    window.addEventListener("pointerup", onUp);
-    return () => window.removeEventListener("pointerup", onUp);
-  }, [paintingMode]);
-
-  const mainLightRef = useRef<THREE.DirectionalLight>(null);
-  const gridRef = useRef<THREE.Mesh>(null);
-
-  useEffect(() => {
-    const light = mainLightRef.current;
-    if (!light?.shadow) return;
-    light.shadow.mapSize.set(2048, 2048);
-    light.shadow.camera.near = 0.5;
-    light.shadow.camera.far = 100;
-    light.shadow.camera.left = -25;
-    light.shadow.camera.right = 25;
-    light.shadow.camera.top = 25;
-    light.shadow.camera.bottom = -25;
-    light.shadow.bias = -0.0001;
-  }, []);
-
-  useLayoutEffect(() => {
-    const grid = gridRef.current;
-    if (!grid?.material) return;
-    (grid.material as THREE.Material).depthWrite = false;
-  }, []);
-
-  return (
-    <>
-      <ambientLight intensity={0.35} />
-      <hemisphereLight
-        args={["#87ceeb", "#3d2b1f", 0.6]}
-        position={[0, 20, 0]}
-      />
-      {lightSourceVisible && (
-        <mesh position={lightPosition} castShadow={false} receiveShadow={false}>
-          <sphereGeometry args={[2.5, 32, 32]} />
-          <meshBasicMaterial
-            color="#ffdd99"
-            toneMapped={false}
-          />
-        </mesh>
-      )}
-      <directionalLight
-        ref={mainLightRef}
-        position={lightPosition}
-        intensity={lightSourceVisible ? lightStrength : 0}
-        castShadow={lightSourceVisible}
-      />
-      <directionalLight position={[-10, 10, -10]} intensity={0.35} />
-      <pointLight position={[0, 15, 5]} intensity={0.2} distance={40} />
-      <OrbitControls
-        enableRotate={!paintingMode}
-        enablePan={!paintingMode}
-        enableZoom
-        minDistance={4}
-        maxDistance={80}
-      />
-      <Grid
-        ref={gridRef}
-        args={[GRID_SIZE * 2, GRID_SIZE * 2]}
-        cellSize={1}
-        cellThickness={0.5}
-        cellColor="#2a2a2a"
-        sectionSize={4}
-        sectionThickness={2}
-        sectionColor="#444"
-        fadeDistance={GRID_SIZE * 2}
-        fadeStrength={1}
-        infiniteGrid
-        // prevent the grid shaking when the camera is moving
-        position={[0, -0.01, 0]}
-      />
-      <Floor onPlace={place} />
-      {Object.entries(voxels).map(([key, color]) => (
-        <VoxelBlock
-          key={key}
-          position={parseVoxelKey(key)}
-          color={color}
-          voxels={voxels}
-          onRemove={() => remove(key)}
-          onPlaceAdjacent={place}
-          paintingMode={paintingMode}
-          onPaint={paintVoxel}
-          getIsPointerDown={getIsPointerDown}
-          setPaintPointerDown={setPaintPointerDown}
-        />
-      ))}
-    </>
-  );
-}
-
-
-
-
 
 const initialHistoryState: HistoryState = {
   voxels: {},
@@ -471,7 +86,7 @@ export default function VoxelEditor() {
   }, [voxels]);
 
   const handleLoad = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
