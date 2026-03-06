@@ -18,6 +18,38 @@ const PALETTE = [
   "#a1a1aa", "#404040",
 ];
 
+const CONTROL_SECTIONS = [
+  {
+    title: "Mouse",
+    items: [
+      ["Left click", "Place voxel"],
+      ["Shift + left click", "Remove voxel"],
+      ["Left click + drag", "Orbit camera"],
+      ["Right click + drag", "Pan camera"],
+      ["Scroll wheel", "Zoom"],
+    ],
+  },
+  {
+    title: "Trackpad",
+    items: [
+      ["Click", "Place voxel"],
+      ["Shift + click", "Remove voxel"],
+      ["Click + drag", "Orbit camera"],
+      ["Ctrl / Shift / Command + drag", "Pan camera"],
+      ["Pinch", "Zoom"],
+    ],
+  },
+  {
+    title: "Editor",
+    items: [
+      ["Painting mode", "Drag across voxels to recolor them"],
+      ["Undo / Redo", "Step backward or forward through edits"],
+      ["Save / Load", "Export or import MagicaVoxel .vox files"],
+      ["Clear all", "Remove every voxel from the scene"],
+    ],
+  },
+];
+
 type HistoryState = {
   voxels: VoxelMap;
   history: VoxelMap[];
@@ -109,13 +141,43 @@ export default function VoxelEditor() {
   return (
     <div className="flex h-screen w-full flex-col bg-zinc-950">
       {/* Header */}
-      <header className="flex shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4 py-3">
-        <h1 className="text-lg font-semibold tracking-tight text-white">
-          Voxel Editor
-        </h1>
-        <p className="text-sm text-zinc-400">
-          Complete click to add • Shift+complete click to remove • Drag to orbit • Ctrl+drag to pan • Scroll to zoom
-        </p>
+      <header className="flex shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-5 py-3">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight text-white">
+            Voxel Editor
+          </h1>
+        </div>
+        <div className="relative group">
+          <div
+            className="cursor-default select-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+            aria-label="Usage guide"
+          >
+            Guide
+          </div>
+          <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-zinc-800 bg-zinc-900/95 p-4 opacity-0 shadow-2xl transition duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+            <h2 className="text-sm font-semibold text-white">How to use</h2>
+            <p className="mt-1 text-xs leading-5 text-zinc-400">
+              Basic controls for placing voxels and moving around the scene.
+            </p>
+            <div className="mt-3 space-y-3">
+              {CONTROL_SECTIONS.map((section) => (
+                <div key={section.title}>
+                  <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                    {section.title}
+                  </h3>
+                  <ul className="mt-2 space-y-1.5 text-sm text-zinc-300">
+                    {section.items.map(([action, description]) => (
+                      <li key={action} className="leading-5">
+                        <span className="font-semibold text-white">{action}</span>
+                        <span className="text-zinc-400"> - {description}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
