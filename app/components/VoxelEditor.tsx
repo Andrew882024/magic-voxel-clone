@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useReducer } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, useCursor } from "@react-three/drei";
 import * as THREE from "three";
+import { serializeVox, parseVox } from "@/app/lib/voxFormat";
 
 const GRID_SIZE = 32;
 const DRAG_THRESHOLD_PX = 6;
@@ -276,8 +277,46 @@ export default function VoxelEditor() {
   const [historyState, dispatch] = useReducer(historyReducer, initialHistoryState);
   const { voxels, history, historyIndex } = historyState;
   const [selectedColor, setSelectedColor] = useState(PALETTE[0]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
+
+  const handleSave = useCallback(() => {
+    try {
+      const buffer = serializeVox(voxels);
+      const blob = new Blob([buffer], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "scene.vox";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Save .vox failed:", e);
+      alert("Failed to save: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }, [voxels]);
+
+  const handleLoad = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const buffer = reader.result as ArrayBuffer;
+          const loaded = parseVox(buffer);
+          dispatch({ type: "APPLY", next: loaded });
+        } catch (err) {
+          console.error("Load .vox failed:", err);
+          alert("Failed to load .vox: " + (err instanceof Error ? err.message : String(err)));
+        }
+        e.target.value = "";
+      };
+      reader.readAsArrayBuffer(file);
+    },
+    [dispatch]
+  );
 
   return (
     <div className="flex h-screen w-full flex-col bg-zinc-950">
@@ -346,7 +385,37 @@ export default function VoxelEditor() {
               className="h-10 w-full cursor-pointer rounded-lg border border-zinc-700 bg-transparent"
             />
           </div>
-          <div className="mt-auto border-t border-zinc-800 pt-4">
+          <div className="mt-auto border-t border-zinc-800 pt-4 space-y-2">
+            <div>
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Scene (.vox)
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="flex-1 rounded-lg bg-zinc-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-600"
+                  title="Save as MagicaVoxel .vox file"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 rounded-lg bg-zinc-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-600"
+                  title="Load MagicaVoxel .vox file"
+                >
+                  Load
+                </button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".vox"
+                className="hidden"
+                onChange={handleLoad}
+              />
+            </div>
             <button
               type="button"
               onClick={() => dispatch({ type: "CLEAR" })}
