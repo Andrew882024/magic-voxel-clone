@@ -1,3 +1,21 @@
+/**
+ * VoxelEditor
+ *
+ * Root component of the voxel editor.
+ *
+ * Responsibilities:
+ * - maintain the current voxel snapshot and editor UI state
+ * - handle undo / redo history and clear actions
+ * - manage color, tool, and light controls
+ * - save and load MagicaVoxel `.vox` files
+ * - pass scene state into `scene/Scene.tsx`
+ *
+ * Relies on:
+ * - `scene/Scene.tsx` for 3D rendering and interaction
+ * - `scene/shared.ts` for shared editor constants and types
+ * - `app/lib/voxFormat.ts` for `.vox` serialization and parsing
+ * - `stamps/*` for shape placement labels and behavior
+ */
 "use client";
 
 import { useCallback, useReducer, useRef, useState, type ChangeEvent, type ReactNode } from "react";
@@ -63,6 +81,8 @@ type HistoryState = {
 
 type PanelKey = "painting" | "shape" | "color" | "light";
 
+// History is stored as immutable voxel-map snapshots so undo/redo can swap the
+// active scene in constant time without replaying individual edits.
 function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
   switch (action.type) {
     case "APPLY": {
@@ -125,6 +145,8 @@ function SidebarPanel({
   );
 }
 
+// VoxelEditor owns the editor UI state and passes the current scene snapshot to
+// the Three.js view for interaction and rendering.
 export default function VoxelEditor() {
   const [historyState, dispatch] = useReducer(historyReducer, initialHistoryState);
   const { voxels, history, historyIndex } = historyState;

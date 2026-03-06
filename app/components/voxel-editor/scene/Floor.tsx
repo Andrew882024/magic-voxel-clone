@@ -1,3 +1,18 @@
+/**
+ * Floor
+ *
+ * Clickable ground plane for the voxel editor scene.
+ *
+ * Responsibilities:
+ * - capture clicks that land on empty space
+ * - convert pointer hits into grid-aligned placement coordinates
+ * - ignore drag gestures so camera movement does not place voxels
+ * - provide cursor feedback while hovering the floor
+ *
+ * Relies on:
+ * - `shared.ts` for grid sizing and drag-threshold constants
+ * - `Scene.tsx` to supply the `onPlace` callback
+ */
 "use client";
 
 import { useRef, useState } from "react";
@@ -9,6 +24,8 @@ type FloorProps = {
   onPlace: (x: number, y: number, z: number) => void;
 };
 
+// The floor catches clicks that land on empty space so new voxels can still be
+// placed even when the pointer is not intersecting an existing block.
 export function Floor({ onPlace }: FloorProps) {
   const [hovered, setHovered] = useState(false);
   const pending = useRef<{
@@ -50,6 +67,7 @@ export function Floor({ onPlace }: FloorProps) {
 
         const dx = e.clientX - p.clientX;
         const dy = e.clientY - p.clientY;
+        // Ignore pointer-ups that came from orbit/pan drags instead of a click.
         if (dx * dx + dy * dy <= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
           onPlace(...p.position);
         }

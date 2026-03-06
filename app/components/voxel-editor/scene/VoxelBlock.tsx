@@ -1,3 +1,19 @@
+/**
+ * VoxelBlock
+ *
+ * Interactive renderer for a single voxel in the scene.
+ *
+ * Responsibilities:
+ * - render one voxel at its grid position
+ * - handle hover, paint, add-adjacent, and remove interactions
+ * - distinguish edit clicks from camera drag gestures
+ * - bake corner-based ambient occlusion into vertex colors
+ * - expose visual hover feedback for the active block
+ *
+ * Relies on:
+ * - `shared.ts` for voxel-key helpers, drag thresholds, and AO data
+ * - `Scene.tsx` to provide placement, paint, and remove callbacks
+ */
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -54,6 +70,8 @@ export function VoxelBlock({
     const base = new THREE.Color(color);
     const colors = new Float32Array(BOX_CORNER_BY_VERTEX.length * 3);
 
+    // Bake a simple ambient-occlusion tint into each vertex so dense voxel
+    // clusters read with more depth than a flat unlit cube color.
     for (let i = 0; i < BOX_CORNER_BY_VERTEX.length; i++) {
       const c = BOX_CORNER_BY_VERTEX[i];
       const t = 1 - AO_STRENGTH * (occlusion[c] / 8);
@@ -110,6 +128,7 @@ export function VoxelBlock({
 
         const dx = e.clientX - p.clientX;
         const dy = e.clientY - p.clientY;
+        // Treat larger movements as camera manipulation, not an edit click.
         if (dx * dx + dy * dy > DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
 
         if (p.shiftKey) {

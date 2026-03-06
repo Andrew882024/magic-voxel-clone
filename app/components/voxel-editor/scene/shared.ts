@@ -1,3 +1,24 @@
+/**
+ * shared
+ *
+ * Shared constants, types, and geometry helpers for the voxel editor.
+ *
+ * Responsibilities:
+ * - define grid, drag, history, and lighting defaults
+ * - provide the `VoxelMap` and history action types
+ * - convert between numeric coordinates and string voxel keys
+ * - compute corner occlusion data for voxel shading
+ * - map box-geometry vertices back to logical cube corners
+ *
+ * Relies on:
+ * - `three` to inspect box geometry used for AO lookup data
+ *
+ * Used by:
+ * - `VoxelEditor.tsx`
+ * - `Scene.tsx`
+ * - `Floor.tsx`
+ * - `VoxelBlock.tsx`
+ */
 import * as THREE from "three";
 
 export const GRID_SIZE = 32;
@@ -7,6 +28,8 @@ export const MAX_HISTORY = 50;
 export const DEFAULT_LIGHT_POSITION: [number, number, number] = [6, 22, 6];
 export const DEFAULT_LIGHT_STRENGTH = 1.1;
 
+// Voxel coordinates are stored as "x,y,z" strings so object lookups stay cheap
+// while remaining easy to serialize into .vox data later on.
 export type VoxelMap = Record<string, string>;
 
 export type HistoryAction =
@@ -36,6 +59,8 @@ export function getCornerOcclusion(
 ): number[] {
   const out: number[] = [];
 
+  // For each voxel corner, count nearby occupied cells in the surrounding 2x2x2
+  // neighborhood. Higher counts become darker per-vertex shading.
   for (let cz = 0; cz <= 1; cz++) {
     for (let cy = 0; cy <= 1; cy++) {
       for (let cx = 0; cx <= 1; cx++) {
@@ -57,6 +82,8 @@ export function getCornerOcclusion(
   return out;
 }
 
+// BoxGeometry duplicates vertices per face, so this maps every geometry vertex
+// back to one of the cube's eight logical corners for AO lookup.
 export const BOX_CORNER_BY_VERTEX = (() => {
   const box = new THREE.BoxGeometry(1, 1, 1);
   const pos = box.attributes.position;

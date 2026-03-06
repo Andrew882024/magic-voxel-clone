@@ -1,3 +1,31 @@
+/**
+ * Scene
+ *
+ * Three.js viewport for the voxel editor.
+ *
+ * High-level structure
+ *
+ * Scene
+ *   ├── Lighting setup
+ *   ├── Camera controls (OrbitControls)
+ *   ├── Grid + Floor interaction
+ *   └── Voxel blocks (interactive cubes)
+ *
+ * Responsibilities:
+ * - render lights, controls, grid, floor, and voxel blocks
+ * - translate editor tool state into voxel placement behavior
+ * - route add, remove, and paint actions into history updates
+ * - apply stamp tools such as cube, floor, and tree placement
+ * - configure scene-level camera and shadow behavior
+ *
+ * Relies on:
+ * - `VoxelEditor.tsx` for the editor state and dispatch function
+ * - `Floor.tsx` for empty-space placement clicks
+ * - `VoxelBlock.tsx` for per-voxel rendering and interaction
+ * - `shared.ts` for voxel utilities and constants
+ * - `../stamps/*` for multi-voxel placement helpers
+ */
+
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch } from "react";
@@ -29,6 +57,8 @@ type SceneProps = {
   paintingMode: boolean;
 };
 
+// Scene wires the editor state into the 3D viewport: lights, controls, floor,
+// and each interactive voxel block.
 export function Scene({
   voxels,
   dispatch,
@@ -43,6 +73,7 @@ export function Scene({
 }: SceneProps) {
   const place = useCallback(
     (x: number, y: number, z: number) => {
+      // Placement tools take over the next click; otherwise we place a single voxel.
       if (cubePlacementArmed) {
         dispatch({
           type: "APPLY",
@@ -133,6 +164,7 @@ export function Scene({
     const grid = gridRef.current;
     if (!grid?.material) return;
 
+    // Let the floor and voxels own depth ordering so the grid stays visually subtle.
     (grid.material as THREE.Material).depthWrite = false;
   }, []);
 
