@@ -1,5 +1,9 @@
 # Magic Voxel Clone
 
+Short demo of the voxel editor (2 minutes):
+
+https://www.youtube.com/watch?v=4dmchiYFsjc 
+
 A small MagicaVoxel-inspired voxel editor built with Next.js, React, Three.js, and React Three Fiber. It runs entirely in the browser and lets you build simple voxel scenes, paint them, place preset shapes, and import or export `.vox` files.
 
 ## Features
